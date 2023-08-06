@@ -4,7 +4,9 @@ import pandas as pd
 from fastapi import FastAPI
 from fastapi import HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-
+from fastapi.openapi.docs import get_swagger_ui_html
+from fastapi.openapi.utils import get_openapi
+from fastapi.responses import JSONResponse
 import uvicorn
 from schema import PredictionInputBase, DataEntryBase
 import motor.motor_asyncio
@@ -26,7 +28,7 @@ mongo_client = None
 ml_models = {}
 
 
-app = FastAPI()
+app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 origins = ["*"]
 methods = ["*"]
 headers = ["*"]
@@ -69,9 +71,37 @@ async def startup_event():
 @app.on_event('shutdown')
 async def shutdown_event():
     ml_models["ao_predictor"] = None
+@app.get("/")
+async def homepage():
+    return {"message": "Welcome to AutoML FastAPI application."}
+@app.get("/openapi.json", tags=["documentation"])
+async def get_open_api_endpoint():
+    response = JSONResponse(
+        get_openapi(title="AutoML FastAPI Application.",
+                    description="This application serves an AutoML model for credit account prediction.\n"
+                                "Features: \n"
+                                "1. A new machine learning pipeline is created and trained every hour. \n"
+                                "2. The latest trained pipeline is served for predictions. \n "
+                    ,
+                    version="1", routes=app.routes)
+    )
+    return response
 
+
+@app.get("/docs", tags=["documentation"])
+async def get_documentation():
+    response = get_swagger_ui_html(openapi_url="/openapi.json", title="docs")
+    return response
 @app.post("/add_data")
 async def add_data(data: Data, BackgroundTasks: BackgroundTasks, client=Depends(get_mongo_db)):
+        """
+        Add new data for training.
+
+        - **data**: Data to be added for training.
+
+        Returns:
+        - **id**: ID of the inserted data.
+        """
         data = Data(**data.dict())
         db = client["automl"]
         result = db["data_set"].insert_one(data.dict())
@@ -86,6 +116,16 @@ async def add_data(data: Data, BackgroundTasks: BackgroundTasks, client=Depends(
 
 @app.post("/predict")
 def predict(data: PredictionInputBase, client=Depends(get_mongo_db)):
+    """
+        Make predictions based on input data.
+
+        - **data**: Input data for prediction.
+
+        Returns:
+        - **result**: Prediction result (0 or 1) indicating whether the client will open a credit account.
+        - **confidence**: Confidence level of the prediction.
+        - **model**: Active model details.
+    """
     input_data = pd.DataFrame([data.dict()])
     try:
         result = ml_models["ao_predictor"].predict(input_data).tolist()[0]
