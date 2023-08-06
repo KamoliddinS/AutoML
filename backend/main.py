@@ -60,6 +60,7 @@ async def startup_event():
             created_at= datetime.datetime.now(),
             updated_at= datetime.datetime.now(),
         )
+        ml_models["ao_predictor_tmp"] = joblib.load(pipeline.pipeline_path)
 
         db = mongodb_client["automl"]
         result = db["pipeline"].insert_one(pipeline.dict())
@@ -132,7 +133,12 @@ def predict(data: PredictionInputBase, client=Depends(get_mongo_db)):
         confidence = ml_models["ao_predictor"].predict_proba(input_data).tolist()[0][result]
         model= client["automl"]["pipeline"].find_one({"active": True},{"_id":0})
     except Exception as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Model is being trained")
+        try:
+            result = ml_models["ao_predictor_tmp"].predict(input_data).tolist()[0]
+            confidence = ml_models["ao_predictor_tmp"].predict_proba(input_data).tolist()[0][result]
+            model= client["automl"]["pipeline"].find_one({"active": True},{"_id":0})
+        except Exception as e:
+            raise HTTPException(status_code=status.HTTP_425_TOO_EARLY, detail="Model is not ready yet.")
     return {"result": result,
             "confidence": confidence,
             "model": model}
