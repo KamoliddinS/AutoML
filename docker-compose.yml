@@ -1,0 +1,40 @@
+version: "3"
+services:
+  fastapi:
+    container_name: fastapi_automl
+    build:
+      context: backend
+      dockerfile: Dockerfile
+    command: bash -c "python3 data_loader.py && uvicorn main:app --host 0.0.0.0  --port 7013 --log-level debug"
+#    command: bash -c "uvicorn main:app --host 0.0.0.0  --port 7013 --log-level debug"
+
+    ports:
+      - '7013:7013'
+    restart: on-failure
+    networks:
+      - auto_ml_network
+    depends_on:
+      - mongo
+    environment:
+      CSV_FILE_PATH: dataset/main/credit_train.csv
+      MONGODB_URL: mongodb://user:pass@mongo:27017
+      INITIAL_ML_PIPELINE: train/models/alif_aop_RF_pipeline_init.pkl
+
+  mongo:
+    container_name: mongo_automl
+    image: mongo
+    hostname: mongo
+    networks:
+      - auto_ml_network
+    ports:
+      - 27017:27017
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: user
+      MONGO_INITDB_ROOT_PASSWORD: pass
+    volumes:
+      - mongo-data:/data/db
+volumes:
+  mongo-data:
+
+networks:
+  auto_ml_network:
